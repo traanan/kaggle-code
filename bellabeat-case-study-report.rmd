@@ -1,0 +1,638 @@
+---
+title: 'Bellabeat Case Study'
+subtitle: 'How can a wellness company play it smart?'
+output:
+   html_document:
+    number_sections: false
+    toc: true
+    toc_depth: 5
+    theme: united
+    highlight: tango
+    code_folding: hide
+---
+
+```{r Libraries, message=FALSE, warning=FALSE, include=FALSE}
+## Loading libraries
+library(tidyverse)
+library(dplyr, warn.conflicts = FALSE)
+library(lubridate)
+library(janitor)
+library(plotrix)
+library(utils)
+library(calendR)
+library(stringi)
+library(hms)
+library(scales)
+library(htmltools)
+library(data.table)
+```
+
+```{r Loading CSVs, include=FALSE}
+## Importing the datasets
+sleepDay_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv")
+dailyActivity_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv")
+dailyIntensities_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/dailyIntensities_merged.csv")
+weightLogInfo_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/weightLogInfo_merged.csv")
+hourlyIntensities_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/hourlyIntensities_merged.csv")
+minuteMETsNarrow_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/minuteMETsNarrow_merged.csv")
+minuteIntensitiesNarrow_merged <- read_csv("../input/fitbit/Fitabase Data 4.12.16-5.12.16/minuteIntensitiesNarrow_merged.csv")
+```
+
+# Background
+(Copied from case study file from Coursera)
+
+Urška Sršen and Sando Mur founded Bellabeat, a high-tech company that manufactures health-focused smart products. Sršen used her background as an artist to develop beautifully designed technology that informs and inspires women around the world. Collecting data on activity, sleep, stress, and reproductive health has allowed Bellabeat to empower women with knowledge about their own health and habits. Since it was founded in 2013, Bellabeat has grown rapidly and quickly positioned itself as a tech-driven wellness company for women.
+By 2016, Bellabeat had opened offices around the world and launched multiple products. Bellabeat products became available through a growing number of online retailers in addition to their own e-commerce channel on their website. The company has invested in traditional advertising media, such as radio, out-of-home billboards, print, and television, but focuses on digital marketing extensively. Bellabeat invests year-round in Google Search, maintaining active Facebook and Instagram pages, and consistently engages consumers on Twitter. Additionally, Bellabeat runs video ads on Youtube and display ads on the Google Display Network to support campaigns around key marketing dates.
+Sršen knows that an analysis of Bellabeat’s available consumer data would reveal more opportunities for growth. She has asked the marketing analytics team to focus on a Bellabeat product and analyze smart device usage data in order to gain insight into how people are already using their smart devices. Then, using this information, she would like high-level recommendations for how these trends can inform Bellabeat marketing strategy.
+\
+*You are a junior data analyst working on the marketing analyst team at Bellabeat, a high-tech manufacturer of health-focused products for women. Bellabeat is a successful small company, but they have the potential to become a larger player in the global smart device market. Urška Sršen, cofounder and Chief Creative Officer of Bellabeat, believes that analyzing smart device fitness data could help unlock new growth opportunities for the company. You have been asked to focus on one of Bellabeat’s products and analyze smart device data to gain insight into how consumers are using their smart devices. The insights you discover will then help guide marketing strategy for the company. You will present your analysis to the Bellabeat executive team along with your high-level recommendations for Bellabeat’s marketing strategy.*
+    
+# Introduction
+
+This report analyzes daily activity habits of Fitbit customers, using data collected from 33 anonymous users who consented to having their data collected over 31 days and uploaded to Kaggle. The goal of this project is to provide valuable insight into customers' usage habits and synthesize them into actionable recommendations for Bellabeat's executive team. 
+
+# Preparation
+
+The project relies on 3rd party, public data hosted on Kaggle and uploaded by [Mobius](https://www.kaggle.com/arashnic/fitbit). It covers several variables, and data is organized in daily, hourly, or by-seconds datasets. Data is potentially biased due to the relatively 
+small subset of participating individuals (33), and because different models of Fitbit were used. 
+The organization of the data allowed me to uncover trends in daily and hourly usage habits.
+**Note** - The data is from 2016 and therefore quite outdated. Fitbit has since released several new devices, and it is likely that at least some patterns and outcomes in this study would have been different had the data been current. However, as this was the data designated by Google/Coursera for this project, the data will be treated as current. 
+
+
+# Data Processing
+
+Only eight customers used weight-related features of the Fitbit. It renders that data not very useful for analysis, but tells us that this is not a popular feature.
+All data sets used in this analysis have data from 33 unique users, except for the one tracking sleep (which has 24) which makes them all useful for analysis.
+
+
+# Analysis
+
+The analysis explored several aspects of Fitbit usage: daily activity patterns; change in usage over the recorded time period; usage during nighttime and the relationship between activity level and total usage.
+
+**Note** - this analysis relies heavily on Fitbit users activity date, and uses metabolic equivalents (METs) to measure intensity. For information on how Fitbit measures activity, please see ['What are Active Zone Minutes or active minutes on my Fitbit device?'](https://help.fitbit.com/articles/en_US/Help_article/1379.htm) and scroll down to 'How does my Fitbit device calculate active minutes?'
+
+
+
+## *Daily habits* 
+Fitbit measures intensity throughout the hours of the day, using METs per minute to calculate an intensity score (See Appendix I for more).
+The left chart demonstrates customers activity intensity throughout the day, while the right shows intensity per user. 
+
+```{r chunk hourlydf, include=FALSE}
+## Creating a dataframe with clean names and desirable column formatting                                                                                                                  
+hourly_df <- clean_names(hourlyIntensities_merged)
+hourly_df$activity_hour <- str_replace(hourly_df$activity_hour, "[ ]", "-")
+hourly_df <- separate(hourly_df, activity_hour, into = c("activity_date","activity_hour"), sep = '-')
+hourly_df$activity_date <- as_date(hourly_df$activity_date, format = "%m/%d/%Y")
+hourly_df$activity_hour <- parse_time(hourly_df$activity_hour, format="%I:%M:%S %p")
+```
+
+```{r intensity plot 1 and facet wrap, echo=FALSE, message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+## This is the plot that shows aggragated intensity by hour of the day
+agg_int_df <- data.frame(aggregate(hourly_df$total_intensity, 
+                                    by=list(activity_hour=hourly_df$activity_hour), FUN=sum))%>% 
+                                    rename("agg_intensity"=x)
+aggint_plot <-
+  ggplot(data=agg_int_df, aes(x=activity_hour, y=agg_intensity, fill=agg_intensity, alpha=agg_intensity)) +
+  geom_col() +
+  scale_x_time(
+    breaks = hms(hours = seq(0, 23, 1)),
+    labels = label_time(format = '%H:%M')
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5),
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  labs(title = "During what hours did intensity levels peak?",
+       subtitle = "Intensity throught the day",
+       caption = "",
+       x = "Hour", y = "Aggregated Hourly Intensity"
+  )
+aggint_plot
+
+## This is the plot for facet-wraping 
+intenplot <- 
+  hourly_df %>% 
+  subset(select=-c(activity_date)) %>% 
+  group_by(id, activity_hour) %>% 
+  summarise("total_intensity"=sum(total_intensity)) %>% 
+  ggplot(aes(x=activity_hour, y=total_intensity, fill=total_intensity)) +
+  geom_col(position="stack") +
+  scale_x_time(
+    breaks = hms(hours = seq(0, 23, 1)),
+    labels = label_time(format = '%H:%M')
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5),
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  labs(title = "During what hours did intensity levels peak?",
+       subtitle = "Intensity throught the day",
+       caption = "",
+       x = "Hour", y = "Aggregated Hourly Intensity"
+  )
+
+
+intenplot +
+  facet_wrap(~id) + # This shows each user's daily habits
+  labs(title = "Intensity per user",
+       subtitle = "") +
+  theme(
+    plot.title = element_text(size=8),
+    strip.background =element_rect(fill="white"),
+    strip.text = element_text(size=6, vjust=0.5),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.caption = element_blank()
+  )
+options(dplyr.summarise.inform = FALSE)
+```
+
+
+
+
+The charts tell two interesting stories. **First**, activity levels varied substantially between customers. Looking at average activity, the bottom quantile has a mean of 2.01 miles per day, while the top quantile averaged 8.87 miles per day. Two users logged more than 26.2 miles (marathon distance). This evidence suggests that Fitbit customers are diverse in their fitness levels and fitness enthusiasm.
+
+```{r creating a nice daily activity data frame, include=FALSE}
+### Creating a nice daily activity data frame, with clean names and proper column formatting
+daily_act_df <- dailyActivity_merged
+daily_act_df <- clean_names(daily_act_df)
+daily_act_df <- daily_act_df %>% mutate("total_active_minutes" = very_active_minutes + fairly_active_minutes +                                        lightly_active_minutes)
+daily_act_df <- daily_act_df %>% mutate("total_minutes" = very_active_minutes + fairly_active_minutes + 
+                                              lightly_active_minutes + sedentary_minutes)
+daily_act_df <- daily_act_df %>% mutate("total_active_distance" = very_active_distance + moderately_active_distance + 
+                                          light_active_distance)
+daily_act_df$idchar <- as.character(daily_act_df$id)
+daily_act_df$activity_date <- as.Date(daily_act_df$activity_date, format = "%m/%d/%Y")
+```
+
+```{r distance plots, echo=FALSE, fig.show="hold", message=FALSE, warning=FALSE, fig.align = 'center'}
+agg_da_df <- 
+  daily_act_df %>% filter(total_active_minutes>5 & total_active_distance>0) %>%  ## filtering for low data rows
+  subset(select=-c(activity_date, idchar))
+agg_da_df <- agg_da_df %>% 
+  group_by(id) %>% 
+  summarise_each(funs = sum)
+ndays = daily_act_df %>% count(id)
+agg_da_df$days = ndays$n
+
+avg_agg_da_df = agg_da_df / agg_da_df$days
+avg_agg_da_df$id = agg_da_df$id
+avg_agg_da_df$idchar <- as.character(avg_agg_da_df$id)
+avg_agg_da_df <- avg_agg_da_df %>% arrange(total_active_distance)
+
+avg_agg_plot <-
+ggplot(data=avg_agg_da_df, mapping=aes(x=idchar, y=total_active_distance, color=total_active_distance, size=total_active_distance)) +
+  geom_point() + ## Below are the quantile values I found using (summary())
+  geom_hline(yintercept=6.9119, linetype="dashed", color="maroon", size=1.25, alpha=0.5) +
+  geom_hline(yintercept=5.0794, linetype="dashed", color="maroon", size=1.25, alpha=0.5) +
+  geom_hline(yintercept=3.4535, linetype="dashed", color="maroon", size=1.25, alpha=0.5) +
+  theme_minimal() +
+  scale_fill_brewer(palette="Blues") + 
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank()
+  ) +
+  labs(title = "Activity levels vary greatly between users",
+       subtitle = "Average active distance per user per day (points = users)",
+       caption = "(Colors and size represent different average distance, dashed lines are quantiles)",
+       x = "User", y = "Active distance per user"
+  )
+avg_agg_plot
+
+
+```
+
+**Second**, activity levels were highest from 5 pm to 8 pm, and also peaked slightly around noon. This indicates that users mostly exercised after traditional working hours (9:00-5:00), or went for a short workout during their lunch break. Based on this, it appears that most customers worked in an office setting. This pattern becomes even clearer when excluding weekends, when office workers typically do not go to work:
+
+```{r hourly plots sans weekeends, echo=FALSE, fig.show="hold", message=FALSE, warning=FALSE, out.width="50%"}
+wkday_hourlyint_df <- hourly_df       ## new df without weekends
+wkday_hourlyint_df$wday=weekdays(wkday_hourlyint_df$activity_date)
+wkday_hourlyint_df <- 
+  wkday_hourlyint_df %>% 
+  filter(wday != "Saturday") 
+wkday_hourlyint_df <- 
+  wkday_hourlyint_df %>% 
+  filter(wday != "Sunday")
+
+agg_wkdayint_df <- data.frame(aggregate(wkday_hourlyint_df$total_intensity, 
+                                    by=list(activity_hour=wkday_hourlyint_df$activity_hour), FUN=sum))%>% 
+                                    rename("agg_intensity"=x)
+
+  ggplot(data=agg_wkdayint_df, aes(x=activity_hour, y=agg_intensity, fill=agg_intensity, alpha=agg_intensity)) +
+  geom_col() +
+  scale_x_time(
+    breaks = hms(hours = seq(0, 23, 1)),
+    labels = label_time(format = '%H:%M')
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5),
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  labs(title = "During what hours did intensity levels peak?",
+       subtitle = "Intensity throught the day",
+       caption = "(Gradient colors represent different users)",
+       x = "Hour", y = "Aggregated Hourly Intensity"
+  )
+  
+## code for facet wrap 
+wkday_hourlyint_plot <- ## plot name that will only be facetwrapped 
+  wkday_hourlyint_df %>% 
+  subset(select=-c(activity_date)) %>% 
+  group_by(id, activity_hour) %>% 
+  summarise("total_intensity"=sum(total_intensity)) %>% 
+  ggplot(aes(x=activity_hour, y=total_intensity, fill=total_intensity)) +
+  geom_col() +
+  scale_x_time(
+    breaks = hms(hours = seq(0, 23, 1)),
+    labels = label_time(format = '%H:%M')
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5),
+    panel.grid = element_blank(),
+    panel.background = element_blank()
+  ) +
+  labs(title = "Intensity by hour excluding weekends",
+       caption = "(Gradient colors represent intensity per user)",
+       x = "Hour", y = "Aggregated Hourly Intensity"
+  ) 
+
+wkday_hourlyint_plot +      ## facet the wrap
+facet_wrap(~id) +
+  labs(title = "Intensity per user",
+       subtitle = "") +
+  theme(
+    plot.title = element_text(size=8),
+    strip.background =element_rect(fill="white"),
+    strip.text = element_text(size=6, vjust=0.5),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    plot.caption = element_blank()
+  )
+options(dplyr.summarise.inform = FALSE)
+```
+
+Fitbit users have the option to manually log when an activity begins and ends. The app provides an output of distance covered. However, 
+this feature appears extremely underutilized: only four customers used it, one of them just once, and only two of them more than three times. This could  be because users did not understand it, found it not useful, or perhaps it was hard to reach in Fitbit's interface. 
+\
+
+## *Fitbit usage over time*
+The data looked at a time frame from 12-April-2016 to 12-May-2016 (31 days). Examining total minutes recorded per day revealed that customers wore their devices less towards the end of the period. 
+
+```{r usage over time plots, echo=FALSE, message=FALSE, warning=FALSE, out.width="50.00%", fig.show="hold"}
+#'# this is just becuase kaggle markdown colors are all over the place 
+total_activity <- subset(dailyActivity_merged, 
+                         select=c(Id, ActivityDate, VeryActiveDistance, 
+                                  ModeratelyActiveDistance, LightActiveDistance, VeryActiveMinutes, FairlyActiveMinutes,
+                                  LightlyActiveMinutes, SedentaryMinutes, TotalSteps, TotalDistance, Calories))
+total_activity <- clean_names(total_activity)
+total_activity <- total_activity %>% mutate("total_active_minutes" = very_active_minutes + fairly_active_minutes + 
+                                              lightly_active_minutes)
+total_activity <- total_activity %>% mutate("total_minutes" = very_active_minutes + fairly_active_minutes + 
+                                              lightly_active_minutes + sedentary_minutes)
+total_activity <- total_activity %>% mutate("id_char" = as.character(id))
+
+cal_df <- total_activity
+
+newdate <- as.Date.character(cal_df$activity_date, format="%m/%d/%Y")
+cal_df$date =  as.Date.character(cal_df$activity_date, format="%m/%d/%Y")
+cal_df <- subset(cal_df, select = -c(activity_date))
+cal_df <- rename(cal_df, "activity_date" = "date")
+
+date_df <- data.frame("id"=cal_df$id,
+                      "activity_date"=cal_df$activity_date,
+                      "total_hours"=total_activity$total_minutes/60)
+
+hrsdate_df <- 
+  data.frame(aggregate(date_df$total_hours, 
+                       by=list(activity_date=date_df$activity_date), FUN=sum)) %>% 
+  rename("total_hours"=x)
+
+calplot <-
+      calendR(start_date = min(hrsdate_df$activity_date), 
+        end_date = max(hrsdate_df$activity_date),
+        special.days = hrsdate_df$total_hours/23.1,
+        title="Overall minutes logged over time",
+        subtitle="Fitbit usage declines with time",
+        title.size = 15,
+        gradient=TRUE,
+        special.col = "dodgerblue",
+        low.col = "white",
+        orientation = "portrait"
+      
+)
+calplot
+
+ylnticks <- seq(0,24,3)
+xlnticks <- seq(as.Date("2016/04/12"), as.Date("2016/05/12"), 7)
+
+hrlineplot <- 
+ggplot(data=hrsdate_df) +
+  geom_point(mapping=aes(x=activity_date, y=total_hours)) +
+  geom_smooth(mapping=aes(x=activity_date, y=total_hours), color="#0072B2", method = "loess", formula = y ~ x) +
+  theme_minimal() +
+  scale_x_date(
+    expand = c(0, 0.2),
+    breaks = xlnticks,
+    date_labels = "%b-%d"
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5)
+  ) +
+  labs(title = "Daily usage declines over time (aggregated)",
+       caption = "(Last day is April 12)",
+       x = "Date", y = "Aggragated hours per day (all users)"
+  )
+hrlineplot
+
+```
+
+## *Sleep and activity*
+
+Attempting to gather useful information about device usage at night bore no fruit as there are significant gaps in the data. For instance, there are 33(users) x 31(days) = 1023 total days. In nearly half of them (478 days) users logged 1440 minutes (24 hours) of using Fitbit, but 0 minutes in bed. That is more than the total days for where there is data on sleep (413). 4 users with total minutes = 1440 and sleep minutes = 0 also have days when they **did** log sleep minutes. This could be because different Fitbits had different features - for example, manually logging sleep verses automatic detection. The discrepancy in sleep data suggests that this feature of the Fitbit has much room for improvement.
+
+```{r cleaning up sleepday_merged, eval=FALSE, include=FALSE}
+sleepdm_clean <- clean_names(sleepDay_merged)
+sleepdm_clean$sleep_day <- str_replace(sleepdm_clean$sleep_day, "[ ]", "-")
+sleepdm_clean <- separate(sleepdm_clean, sleep_day, into = c("activity_date","sleep_hour"), sep = '-')
+sleepdm_clean$activity_date <- as_date(sleepdm_clean$activity_date, format = "%m/%d/%Y")
+sleepdm_clean$sleep_hour <- parse_time(sleepdm_clean$sleep_hour, format="%I:%M:%S %p")
+sleepdm_clean <- sleepdm_clean %>% 
+  subset(select = -c(sleep_hour))
+```
+
+```{r exploring sleep and usage, eval=FALSE, include=FALSE}
+tmin_tslp_df <- 
+  left_join(daily_act_df, sleepdm_clean, by=c("activity_date", "id")) %>% 
+  mutate_if(is.numeric, ~replace(., is.na(.), 0)) %>% 
+  mutate("total_awake" = total_minutes - total_minutes_asleep) %>% 
+  subset(select=c(id, activity_date, total_active_minutes, total_minutes, 
+                  total_minutes_asleep, sedentary_minutes, total_time_in_bed, total_awake))
+
+tmin_tslp_df %>% 
+  filter(total_awake > 360) # 325
+tmin_tslp_df %>% 
+  filter(total_time_in_bed > 360) # 21
+tmin_tslp_df %>% 
+  count(total_minutes_asleep==0, total_awake==1440) # 478
+
+sleepdm_clean %>% count(id) # 24
+
+compare_df <- tmin_tslp_df %>% 
+  filter(total_minutes_asleep==0, total_awake==1440) %>% 
+  left_join(tmin_tslp_df, sleepdm_clean, by=c("activity_date", "id"))
+compare_df %>% count(id)
+```
+
+
+
+## *Activity levels and overall usage*
+Total activity minutes and total minutes are not significantly correlated.
+Moreover, dividing the users into two groups - more active, and less active (of 16 users and 17, respectively) - by median active minutes demonstrated negligible divergence in the average minutes logged between the two groups, and there is no statistically significant difference between them (see Appendix I). In other words, activity level does not seem to affect total Fitbit use, as measured by total minutes logged.
+```{r correlation for reference, eval=FALSE, include=FALSE}
+daily_act_df %>% 
+  summarise(cor(total_active_minutes, total_minutes))
+```
+
+```{r setting the tables and statistics test, include=FALSE}
+## Setting the tables and statistics test. I created this dataset first before the 
+## clean version of daily_Activity_merged when I was just starting, which is why 
+## this seems a bit redundant.
+dactivity_summary <- subset(dailyActivity_merged, select=c(Id, VeryActiveDistance, 
+                            ModeratelyActiveDistance, LightActiveDistance, VeryActiveMinutes, FairlyActiveMinutes,
+                            LightlyActiveMinutes, SedentaryMinutes, TotalSteps, TotalDistance, Calories)) %>% 
+  group_by(Id) %>% 
+  summarise(sum(VeryActiveDistance), sum(ModeratelyActiveDistance), sum(LightActiveDistance), sum(VeryActiveMinutes), sum(FairlyActiveMinutes),
+                sum(LightlyActiveMinutes), sum(SedentaryMinutes), sum(TotalSteps), sum(TotalDistance), sum(Calories))
+dactivity_summary <- clean_names(dactivity_summary)
+dactivity_summary <- dactivity_summary %>% mutate("sum_total_active_minutes" = sum_very_active_minutes + sum_fairly_active_minutes + 
+                                                    sum_lightly_active_minutes)
+dactivity_summary <- dactivity_summary %>% mutate("sum_total_minutes" = sum_very_active_minutes + sum_fairly_active_minutes + 
+                               sum_lightly_active_minutes + sum_sedentary_minutes)
+dactivity_summary <- dactivity_summary %>% mutate("id_char" = as.character(id))
+wilcox_df <- subset(dactivity_summary, select=c(id, sum_total_active_minutes, sum_total_minutes))
+wilcox_df$bini <- wilcox_df$sum_total_active_minutes > median(wilcox_df$sum_total_active_minutes)+1
+wilcox_df$bini <- as.numeric(wilcox_df$sum_total_active_minutes > median(wilcox_df$sum_total_active_minutes)+1)
+
+wilcox.test(sum_total_minutes ~ bini, data=wilcox_df)
+```
+
+```{r Setting the data to be plotted, include=FALSE}
+## This is the data for the next segment of plots
+median(dactivity_summary$sum_total_active_minutes) ## is 6976
+
+more_active_df <- dactivity_summary %>% 
+  filter(sum_total_active_minutes > median(dactivity_summary$sum_total_active_minutes))
+
+less_active_df <- dactivity_summary %>% 
+  filter(sum_total_active_minutes < median(dactivity_summary$sum_total_active_minutes)+1)
+
+ma_la_sum <- data.frame("group_name"=c("more_total", "less_total"),
+                        "agg_avg_mins"=c((mean(more_active_df$sum_total_minutes)),(mean(less_active_df$sum_total_minutes))))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, figures-side, fig.show="hold", out.width="50%"}
+## Plots comparing the two groups
+plabel = c("More Active Group", "Less Active Group")
+ 
+  pie3D(main="Average minutes recorded by group", ma_la_sum$agg_avg_mins, labels=plabel, 
+      explode = 0.01, labelcex = 0.5, theta=1,
+      start=1.6, col=c("steelblue3", "#CC79A7"), shade=0.9)
+  
+  mati <- matrix(c(dactivity_summary$sum_total_active_minutes, 
+                 dactivity_summary$sum_sedentary_minutes), nrow=2, byrow=TRUE)
+colnames(mati) <- c(dactivity_summary$id)
+rownames(mati) <- c("total_active","total_sed")
+
+coul <- c("#56B4E9", "#0072B2")
+
+bplottext <- c(dactivity_summary$sum_total_active_minutes/dactivity_summary$sum_total_minutes)
+tactbplot <-
+barplot(mati, 
+        col=coul,
+        border="black", 
+        space=0.2, 
+        font.axis=2, 
+        legend.text=c("Total Active Minutes","Total Minutes"),
+        args.legend=list(bty = "n", x="top", inset=c(0.2, -0.22)),
+        xlab="User",
+        ylab="Total Minutes",
+        names.arg = rep(" ", times=33)
+        )
+
+
+```
+\newpage
+
+# Analysis Summary
+
+The analysis provided valuable insights into Fitbit users' habits.
+
+ * **Fitbit's weight-tracking features were not popular.**
+ * **Fitbit's manual activity-logging feature was not popular.**
+ * **The wearable has a wide target audience with regard to fitness levels and attitudes toward fitness.**
+ * **Users' daily activity patterns suggest the target audience is skewed towards people with office jobs.**
+ * **Fitbit usage declined towards the end of the 31 day period.**
+ * **Fitbit's sleep-gathering features leave much to be desired.**
+ * **Activity level is not a good indicator of total usage.**
+
+\
+\
+
+# Recommendations
+
+## Short-term
+
+ * **Bellabeat's marketing should highlight the convenience, functionality and superiority of the Belleabeat App weight tracking and activity logging features.**
+ * **Bellabeat's marketing should target '9 to 5' workers but seek to appeal to other audiences as well.**
+ * **Bellabeat marketing of its Leaf and Time smart devices should be inclusive. It should appeal to all women, regardless of fitness level or enthusiasm. Since its functionality goes beyond fitness, it should highlight its broad-array of features, highlighting how it brings value to all customers, regardless of the amount of steps they walk per day.** 
+ * **Bellabeat's marketing should emphasize the advantages of its sleep tracking features, and the convenience and utility of wearing the device at night.**
+ * **Bellebeat's marketing should highlight its products' superior, unrivaled, fashionable, and comfortable design.**
+\
+\
+
+## Long-term
+
+Sleep and recovery are issues that are gaining increasing traction and interest (see 'Interest over time' chart in Appendix II), and fitness trackers that can provide valuable insight into customers' sleep habits are in increasing demand. [The global fitness tracker market is expected to grow by $27.40 bn during 2022-2026, albeit at a slowing pace](https://www.yahoo.com/now/global-fitness-tracker-market-expected-125300847.html?guccounter=1&guce_referrer=aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbS8&guce_referrer_sig=AQAAAAHGuSYlf_6EAgBjZQ-Vpy_J-asUZnFcrLjiPfvnoKgMWmHxQXFmz_wg_LjtlZhTDqWzh8vQENNYdwNV3kSZGLpJl5lRWPNSmMvOOeQDISYaaBq8P4D_N_D2Og_prQbu3RleJ0kSpb9ipw1kP45uBYBzepMdIg_EuE2nu3VY7jYe#:~:text=GlobeNewswire-,The%20Global%20Fitness%20Tracker%20Market%20is%20expected%20to%20grow%20by,12.41%25%20during%20the%20forecast%20period&text=Global%20Fitness%20Tracker%20Market%202022,poised%20to%20grow%20by%20%24%2027.) [However, a 2021 analysis found that the market for wearable sleep trackers is expected to grow at a CAGR of 7.6%](https://www.mordorintelligence.com/industry-reports/wearable-sleep-trackers-market). There are several companies that offer such services - Whoop, Apple and Oura, to name a few. However, the Oura ring is the only wearable that is a no-screen, true fashion accessory. 
+\
+**Bellabeat is already a top brand in fashionable wearables, and its designs are unrivaled. However, its range of products does not include rings, and its target audience is exclusivly women. Expanding to ring-fitness trackers will allow Bellabeat to exponentially widen its customers base to also include men, as well as women who prefer minimalist wearables.**
+
+\
+\
+\
+\
+\newpage
+
+# Appendix I: Statistics
+
+## METs 
+10 METs/min translated to 0 intensity/min while the highest MET/min value, 157, translated to 3 intensity/min:
+
+```{r minute int data, include=FALSE}
+#'#Stopping the Kaggle markdown color madness
+minute_int <- clean_names(minuteIntensitiesNarrow_merged)
+minute_int$activity_minute <- str_replace(minute_int$activity_minute, "[ ]", "-")
+minute_int <- separate(minute_int, activity_minute, into = c("activity_date","activity_hour"), sep = '-')
+minute_int$activity_date <- as_date(minute_int$activity_date, format = "%m/%d/%Y")
+minute_int$activity_hour <- parse_time(minute_int$activity_hour, format="%I:%M:%S %p")
+```
+
+```{r}
+minute_met <- clean_names(minuteMETsNarrow_merged)
+minute_met <- minute_met %>% 
+  rename("mets" = me_ts)
+
+minute_met %>% 
+filter(mets==(max(minute_met$mets)))
+
+minute_int %>% 
+  filter(activity_date=="2016-05-07" & id=="2873212765" & activity_hour==as_hms("07:43:00"))
+```
+
+## Fitbit usage over the time period.
+
+Mann-Whitney test for total hours logged over time (distribution is not binomial).
+
+ * Group 1 - first half of the time period
+ * Group 2 - second half of the time period 
+ * (Is there a statistically significant difference between the two groups?)
+ 
+
+ 
+```{r wilcox test for calendar plots, echo=FALSE}
+hrsdate_df$biny <-
+  as.numeric(hrsdate_df$activity_date<"2016-04-27")
+
+wilcox.test(total_hours ~ biny, hrsdate_df)
+
+```
+
+## Relationship between activity level and total usage
+
+Mann-Whitney test for total activity (distribution is not binomial).
+
+ * Group 1 - more active 
+ * Group 2 - less active
+ * (Is there a statistically significant difference between the two groups?)
+ 
+```{r echo=FALSE}
+wilcox_df <- subset(dactivity_summary, select=c(id, sum_total_active_minutes, sum_total_minutes))
+wilcox_df$bini <- wilcox_df$sum_total_active_minutes > median(wilcox_df$sum_total_active_minutes)+1
+wilcox_df$bini <- as.numeric(wilcox_df$sum_total_active_minutes > median(wilcox_df$sum_total_active_minutes)+1)
+
+wilcox.test(sum_total_minutes ~ bini, data=wilcox_df)
+```
+
+\newpage
+
+# Appendix II: Charts 
+## Google searches for "Better sleep"
+\
+```{r echo=FALSE}
+includeHTML("../input/embedhtml/gsearch.html")
+```
+[See Google Trends - Google searches for "better sleep" over the past five years](https://trends.google.com/trends/explore?date=today%205-y&q=%22better%20sleep%22)
+
+
+\
+
+## Distance and daily usage by user
+
+```{r many points plots, fig.show="hold", message=FALSE, warning=FALSE, out.width="50%"}
+daily_pointplot <-
+daily_act_df %>% filter(total_active_minutes>5 & total_active_distance>0) %>% 
+  ggplot(mapping=aes(x=idchar, y=total_active_distance, color=idchar)) +
+  geom_point() +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank()
+  ) +
+  labs(title = "",
+       subtitle = "Daily active distance varies greatly between users",
+       caption = "(Gradient colors represent different users)",
+       x = "User", y = "Active distance per user per day"
+  )
+daily_pointplot
+
+manypointplot <-
+ggplot(data=date_df, aes(color=id)) +
+  geom_point(mapping=aes(activity_date, total_hours)) +
+  geom_smooth(mapping=aes(activity_date, total_hours), color="#0072B2") +
+  theme_minimal() +
+  scale_x_date(
+    expand=c(0,0.2),
+    breaks= xlnticks,
+    date_labels = "%b-%d"
+  ) +
+  scale_y_time(
+      breaks = seq(0,24,3),
+      labels = ylnticks
+) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=70, vjust=0.5),
+    axis.text.y = element_text(vjust=0.5)
+  ) +
+  labs(title = "Daily usage declines over time",
+       x = "Date", y = "Hours used per day",
+       caption = "(Gradient colors represent different users)"
+  )
+
+manypointplot
+```
