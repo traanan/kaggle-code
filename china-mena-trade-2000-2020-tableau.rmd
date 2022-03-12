@@ -1,0 +1,18 @@
+---
+title: "China's trade with the Middle East and North Africa, 2000-2020"
+output:
+   html_document:
+    number_sections: false
+---
+
+The ascent of China to superpower status is one of the most significant geopolitical development of the 21st century thus far.
+China has increased its economic footprint in the Middle East and North Africa substantially since the turn of the century. 
+In contrast, over the last decade, the US has began to shift its attention to the Indo-Pacific, increasingly stepping away from its traditional role 
+as the region's security guarantor.
+
+
+``` {r echo=FALSE}
+#'#
+library(htmltools)
+includeHTML("../input/tableauemb/tableau.html")
+```
